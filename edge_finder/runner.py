@@ -52,7 +52,7 @@ def print_report(rep: Report) -> None:
           f"   worst-5% {mc.worst_maxdd_R:.1f} R")
     print(f"    P(ends negative) {mc.prob_negative:.1%}")
     print("  " + "-" * 60)
-    verdict = "SURVIVOR — promote to next data stage" if rep.survivor \
-        else "REJECTED — did not pass all gates"
+    verdict = "SURVIVOR - promote to next data stage" if rep.survivor \
+        else "REJECTED - did not pass all gates"
     print(f"  VERDICT: {verdict}")
     print(line)

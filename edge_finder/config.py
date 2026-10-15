@@ -15,9 +15,13 @@ from dataclasses import dataclass, field
 # ---------------------------------------------------------------------------
 @dataclass(frozen=True)
 class DataSplit:
-    develop: tuple[str, str] = ("2008-01-01", "2019-12-31")
-    validate: tuple[str, str] = ("2020-01-01", "2022-12-31")
-    holdout: tuple[str, str] = ("2023-01-01", "2026-12-31")
+    # VIX history begins 1990; this split keeps the two biggest vol shocks OUT of
+    # development. 2008 (GFC) sits in develop, but COVID-2020 and the 2022 bear
+    # are held out, so survival on holdout means surviving a real crisis the model
+    # never saw while it was being judged.
+    develop: tuple[str, str] = ("1993-01-01", "2014-12-31")
+    validate: tuple[str, str] = ("2015-01-01", "2019-12-31")
+    holdout: tuple[str, str] = ("2020-01-01", "2026-12-31")
 
 
 # ---------------------------------------------------------------------------
@@ -45,7 +49,9 @@ class CostModel:
 # ---------------------------------------------------------------------------
 @dataclass(frozen=True)
 class Gates:
-    min_trades: int = 100             # enough independent observations
+    min_trades: int = 50              # floor for MONTHLY-frequency strategies
+                                      # (~12 indep. trades/yr); intraday studies
+                                      # should override this far higher.
     min_expectancy_R: float = 0.0     # positive after costs (strict: >0)
     min_profit_factor: float = 1.10   # a real cushion over breakeven
     max_year_concentration: float = 0.75   # no single year > 75% of profits

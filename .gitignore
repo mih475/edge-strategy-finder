@@ -5,3 +5,9 @@ __pycache__/
 data/*.csv
 !data/.gitkeep
 .DS_Store
+
+# raw market data — too big for git, keep local only
+optionsData/
+*.7z
+*.dbn
+*.dbn.zst
