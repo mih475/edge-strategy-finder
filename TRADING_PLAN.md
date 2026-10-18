@@ -36,12 +36,63 @@ Why this one:
 - It is **positive in crises** (2008, 2022) — the regime where everything else bled.
 - It is **monthly and mechanical** — the ideal shape for someone whose edge must be
   execution discipline, not screen-time skill.
-- Realistic expectation: **~0.5–0.6 Sharpe, roughly 10–15%/yr at ~12–15% vol, with
-  15–25% drawdowns and long flat stretches** (2017–2020 was flat industry-wide).
-  Not 30%. Real, modest, survivable.
+- Realistic expectation, now MEASURED (deployment-accurate run, 2007–2026):
+  **native ~3.8%/yr at ~3.8% vol, Sharpe ~1.0, worst drawdown ~-7%**, with long
+  flat stretches (2017–2020 made ~nothing). Excellent risk-*adjusted* quality,
+  but low absolute return — because the vol is low. See "Return target" for what
+  leverage can and cannot do with that.
 
 (Optional second sleeve later: the VRP put-spread, but only after it's validated on
 fresh 2024–25 option data. Start with one sleeve.)
+
+## Return target — CORRECTED with the measured native profile
+
+The earlier version of this section assumed native vol was ~12% and concluded
+15% needed only ~1.6x leverage. **That was wrong.** The deployment-accurate run
+measured the book's true native profile:
+
+> **CAGR ~3.8% · vol ~3.8% · Sharpe ~0.98 · worst drawdown ~-7% · avg gross 52%**
+
+The edge quality is *excellent* (Sharpe ~1.0). The absolute return is small
+because the vol is small — the book sits ~48% in cash and is deeply diversified.
+Return = Sharpe × vol, so **15% is not a 1.6x nudge; it needs ~4x leverage.**
+Corrected tradeoff (drawdown scales roughly linearly with leverage, worse in the
+tails):
+
+| Leverage | ~vol | ~return | model worst DD | plan-for DD | How you'd run it |
+|---|---|---|---|---|---|
+| **1.0x native** | 3.8% | **~3.8%** | -7% | -12% | **$5k cash account — now** |
+| 1.9x | ~7% | ~7% | -14% | -22% | cash account, fully deployed — the ceiling |
+| 2.6x | ~10% | ~10% | -19% | -30% | margin account (~2.6:1) |
+| **4.0x** | ~15% | **~15%** | -29% | **-45%+** | futures or heavy margin |
+
+**Two hard truths:**
+
+1. A **$5k cash account physically tops out near ~1.9x / ~7%** — it cannot reach
+   15%. That needs futures or margin *and* the stomach for ~-45% drawdowns.
+2. The 0.98 Sharpe is a clean backtest. **Live** — after real spreads, taxes,
+   execution gaps, and the well-documented compression of trend Sharpes over the
+   last decade — expect **~0.5–0.7**. At Sharpe 0.6, hitting 15% needs ~25% vol
+   (~6.5x leverage), which is a wipe-out risk. So in practice **15% is not a safe
+   target for this edge.**
+
+**Revised stance:** run **native (~3.8%)** at $5k through Phases 1–2 to build the
+discipline track record. Treat leverage as a slowly-earned rung requiring a
+bigger margin/futures account *and* proven behavior — and even then aim for
+~7–10%, not 15%. The real wealth engine is **salary contributions compounding**;
+this book's job is diversification and risk-adjusted return, not the headline
+number. The "Honest expectations" section below warned of exactly this.
+
+**The leverage ladder (earn each rung with live discipline, never skip):**
+1. **Rung 1 — 1.0x native (~4%):** all of Phase 1 (paper) and Phase 2 (live at
+   $5k). Prove you execute to the rule and hold a drawdown without deviating.
+2. **Rung 2 — up to ~1.9x (~7%):** a cash account fully deployed, only after Rung
+   1 survived a live losing stretch with zero rule-breaks.
+3. **Rung 3 — ~2.6x+ (margin/futures, ~10%):** only in a larger account, only
+   after Rung 2 did the same. 15%/4x is explicitly NOT a planned rung.
+
+Dollar reality at $5k: native ≈ **+$190/yr**; at the ~1.9x ceiling ≈ +$350/yr.
+Modest by design. Salary-funded and salary-backstopped.
 
 ## The phased path (go/no-go gates — do not skip)
 

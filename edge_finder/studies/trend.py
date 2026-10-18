@@ -47,6 +47,7 @@ class TimeSeriesMomentum(Strategy):
         target_ann_vol: float = 0.10,
         max_leverage: float = 3.0,
         cost_bps: float = 2.0,
+        long_flat: bool = False,
         cfg: Config = DEFAULT,
     ):
         self.lb = lookback_days
@@ -54,8 +55,14 @@ class TimeSeriesMomentum(Strategy):
         self.target_ann = target_ann_vol
         self.max_lev = max_leverage
         self.cost_bps = cost_bps
-        self.cfg = cfg
-        self.name = f"TSMOM {lookback_days//21}m-trend, {int(target_ann_vol*100)}% vol-target"
+        # long_flat=False is the FROZEN, validated edge (long/short). long_flat=True
+        # is the cash-brokerage deployment variant: take the long only when the trend
+        # is up, hold nothing (no short) when it is down. It is weaker and must be
+        # re-validated on its own before it is trusted. Default stays frozen.
+        self.long_flat = long_flat
+        mode = "long/flat" if long_flat else "long/short"
+        self.name = (f"TSMOM {lookback_days//21}m-trend, "
+                     f"{int(target_ann_vol*100)}% vol-target ({mode})")
 
     COLUMNS = ["entry_time", "exit_time", "direction", "gross_R", "cost_R",
                "asset", "signal", "fwd_ret", "pos_ret"]
@@ -78,7 +85,13 @@ class TimeSeriesMomentum(Strategy):
                     continue
                 # trailing total return over lookback (causal)
                 trail = hist.iloc[-1] / hist.iloc[-self.lb] - 1.0
-                signal = 1 if trail > 0 else -1
+                if self.long_flat:
+                    if trail <= 0:
+                        prev_sig[c] = 0          # flat: take no position this month
+                        continue
+                    signal = 1
+                else:
+                    signal = 1 if trail > 0 else -1
                 # trailing realized monthly vol
                 dr = daily_ret[c].loc[:t].dropna().iloc[-self.vlb:]
                 if len(dr) < self.vlb // 2:
@@ -130,6 +143,104 @@ def portfolio_summary(trades, target_ann_vol=0.10):
     print(f"    by year (R): {cells}")
 
 
+def deployment_curve(px, lookback_days=252, vol_lookback_days=63,
+                     target_ann_vol=0.10, max_leverage=3.0, long_flat=False,
+                     cost_bps=2.0, start="2007-01-01"):
+    """DEPLOYMENT-ACCURATE portfolio equity curve, in *capital* terms.
+
+    Unlike portfolio_summary (which averages only the months a market was
+    active and reports abstract R), this builds the real 1/N equal-risk book
+    and COUNTS CASH MONTHS AS ZERO return. For long/flat, a market whose trend
+    is down contributes 0 that month but still occupies its 1/N slot - so flat
+    stretches correctly drag the compounded return down. The denominator each
+    month is the number of markets that EXIST yet (have >= lookback history),
+    so the early warm-up isn't penalised for markets not launched.
+
+    Reports two books:
+      - NATIVE: the vol-target as-is (may quietly use > 1x gross in calm
+        regimes - that extra leverage is intrinsic to vol-targeting).
+      - CASH-CAPPED: gross capped at 100% each month (what a cash account can
+        actually hold). This is the honest $5k-account number.
+    """
+    px = px.sort_index().astype(float)
+    me = px.resample("ME").last()
+    target_m = target_ann_vol / np.sqrt(12.0)
+    daily_ret = px.pct_change()
+    months = me.index
+    prev_sig = {c: 0 for c in px.columns}
+
+    idx, nat, cap, gross_hist = [], [], [], []
+    for i in range(len(months) - 1):
+        t, t1 = months[i], months[i + 1]
+        denom = 0
+        sleeve_ret, sleeve_size = {}, {}
+        for c in px.columns:
+            hist = px[c].loc[:t].dropna()
+            if len(hist) < lookback_days + 5:
+                continue                      # market not launched -> not counted
+            denom += 1
+            trail = hist.iloc[-1] / hist.iloc[-lookback_days] - 1.0
+            if long_flat:
+                if trail <= 0:
+                    prev_sig[c] = 0
+                    continue                  # cash this month: 0 contribution, still counted
+                signal = 1
+            else:
+                signal = 1 if trail > 0 else -1
+            dr = daily_ret[c].loc[:t].dropna().iloc[-vol_lookback_days:]
+            if len(dr) < vol_lookback_days // 2:
+                continue
+            rv_m = float(dr.std() * np.sqrt(21.0))
+            if not np.isfinite(rv_m) or rv_m <= 0:
+                continue
+            size = min(target_m / rv_m, max_leverage)
+            p0, p1 = me[c].get(t), me[c].get(t1)
+            if p0 is None or p1 is None or not np.isfinite(p0) or not np.isfinite(p1) or p0 <= 0:
+                continue
+            fwd = p1 / p0 - 1.0
+            turn = 2.0 if signal != prev_sig[c] else 0.3
+            cost = (cost_bps / 1e4) * size * turn
+            sleeve_ret[c] = size * signal * fwd - cost
+            sleeve_size[c] = size
+            prev_sig[c] = signal
+        if denom == 0:
+            continue
+        gross = sum(sleeve_size.values()) / denom
+        r_native = sum(sleeve_ret.values()) / denom
+        scale = min(1.0, 1.0 / gross) if gross > 0 else 1.0
+        r_capped = r_native * scale
+        idx.append(t1); nat.append(r_native); cap.append(r_capped); gross_hist.append(gross)
+
+    s_nat = pd.Series(nat, index=pd.to_datetime(idx))
+    s_cap = pd.Series(cap, index=pd.to_datetime(idx))
+    if start:
+        s_nat = s_nat[s_nat.index >= start]
+        s_cap = s_cap[s_cap.index >= start]
+    avg_gross = float(np.mean([g for g, d in zip(gross_hist, idx) if pd.Timestamp(d) >= pd.Timestamp(start)])) if start else float(np.mean(gross_hist))
+
+    def _stats(s, label):
+        if len(s) < 12:
+            print(f"  [{label}] insufficient months"); return
+        eq = (1 + s).cumprod()
+        ann = float(eq.iloc[-1] ** (12.0 / len(s)) - 1.0)
+        vol = float(s.std() * np.sqrt(12.0))
+        shp = float((s.mean() * 12.0) / vol) if vol > 0 else 0.0
+        dd = float((eq / eq.cummax() - 1.0).min())
+        pos = float((s > 0).mean())
+        print(f"  [{label}]  CAGR {ann:+.1%}  vol {vol:.1%}  Sharpe {shp:.2f}  "
+              f"maxDD {dd:.1%}  +months {pos:.0%}")
+        yr = (1 + s).groupby(s.index.year).prod() - 1
+        print("    by year: " + "  ".join(f"{y}:{v:+.0%}" for y, v in yr.items()))
+
+    mode = "long/flat" if long_flat else "long/short"
+    print(f"\n  DEPLOYMENT-ACCURATE CURVE ({mode}, 1/N equal-risk, cash months = 0, "
+          f"from {start})")
+    print(f"    avg gross exposure: {avg_gross:.0%} of capital")
+    _stats(s_nat, "NATIVE    ")
+    _stats(s_cap, "CASH-CAP  ")
+    return s_nat, s_cap
+
+
 def worst_best_years(trades):
     df = pd.DataFrame([{"y": t.exit_time.year, "R": t.pnl_R} for t in trades])
     byyear = df.groupby("y")["R"].mean()
@@ -161,6 +272,9 @@ def main(argv=None):
     p.add_argument("--csv", default=None)
     p.add_argument("--lookback", type=int, default=252)
     p.add_argument("--target-vol", type=float, default=0.10)
+    p.add_argument("--long-flat", action="store_true",
+                   help="cash-brokerage variant: long when trend up, flat (no short) "
+                        "when down. Weaker; must be re-validated before trusting.")
     args = p.parse_args(argv)
 
     px = _load(args.source, args.csv)
@@ -177,13 +291,16 @@ def main(argv=None):
                        holdout=("2021-01-01", "2025-12-31"))
 
     strat = TimeSeriesMomentum(lookback_days=args.lookback,
-                               target_ann_vol=args.target_vol, cfg=cfg)
+                               target_ann_vol=args.target_vol,
+                               long_flat=args.long_flat, cfg=cfg)
     full = strat.to_trades(px)
     rep = evaluate(full, strat.name + " | FULL SAMPLE (in-sample)", cfg)
     print_report(rep)
     worst_best_years(full)
     print()
     portfolio_summary(full, args.target_vol)
+    deployment_curve(px, lookback_days=args.lookback,
+                     target_ann_vol=args.target_vol, long_flat=args.long_flat)
     print()
     print("  PROTECTED SPLIT (develop 2007-16 -> validate 2017-20 -> holdout 2021-25, incl. 2022 bear)")
     for stage in ("develop", "validate", "holdout"):
